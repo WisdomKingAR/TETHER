@@ -51,7 +51,7 @@ flowchart LR
 Six evidence planes score every tool call; four of them need no learning, so a brand-new agent is protected from its **first call**.
 
 | Plane | Evidence | Needs history? |
-|---|---|---|
+| --- | --- | --- |
 | **P1 Role Contract** | Signed contract of tools, data classes, egress, rate, tool-description hashes | No |
 | **P2 Provenance** | Taint labels (T0 user / T1 internal / T2 external): a sensitive action steered by untrusted content is flagged however it is worded | No |
 | **P3 Decoys** | Per-agent honey files and fake keys that no legitimate task touches | No |
@@ -66,7 +66,7 @@ Scores fuse by noisy-OR (a hard-plane hit floors the risk at 85) and drive a **g
 ## Screenshots
 
 | | |
-|---|---|
+| --- | --- |
 | ![console](docs/images/console.jpg)<br/>**Live console**: 3D agent map, risk, token, learned behaviour | ![attack lab](docs/images/attack-lab.jpg)<br/>**Attack Lab**: token check says ALLOW, TETHER says L3 |
 | ![alert](docs/images/alert.jpg)<br/>**Explainable alert**: narrative, evidence by plane, token change, replay | ![upside down](docs/images/upside-down.jpg)<br/>**Upside-Down**: decoy sandbox and canary tripwire |
 | ![coverage](docs/images/coverage.jpg)<br/>**Coverage & SIEM**: OWASP Agentic Top 10, live CEF stream | |
@@ -74,6 +74,7 @@ Scores fuse by noisy-OR (a hard-plane hit floors the risk at 85) and drive a **g
 ## Features
 
 **Detection and response**
+
 - Six evidence planes with explainable per-plane contributions on every alert
 - Graded containment L0 to L4; shadow mode (observe-only) vs enforce
 - **Upside-Down sandbox**: a quarantined agent's risky calls get plausible fake answers and canary credentials while its real tools stay live
@@ -82,15 +83,18 @@ Scores fuse by noisy-OR (a hard-plane hit floors the risk at 85) and drive a **g
 - **Cold-start agents**: spawn an agent with zero history and attack it; the contract, decoys and provenance catch it on call one
 
 **Identity and audit**
+
 - Ed25519-signed tokens, **RFC 8693 token exchange** (scope can only shrink), revocation
 - Delegation graph with receipts; a sub-agent can never hold more scope than its parent
 - **Tamper-evident ledger**: hash-chained audit log with verify, tamper and re-seal
 
 **Operations**
+
 - **Contract Studio**: edit, what-if replay on the last 300 real events, learn a contract from observed behaviour, signed versions with a canary window
 - Red-team **autopilot**, prompt-injection **playground** (paste a poisoned document), event inspector, incident reports (markdown), OWASP coverage matrix, SIEM export (CEF), live latency metrics
 
 **Experience**
+
 - Cinematic scroll-driven three.js landing page and a live 3D agent constellation (adaptive quality for slower GPUs)
 
 ## Quick start
@@ -102,8 +106,8 @@ git clone https://github.com/shreyaaspires-cloud/SatyaSetu.git && cd SatyaSetu
 ./start.sh          # installs dependencies, then serves
 ```
 
-- Console: http://localhost:5173
-- API docs (Swagger): http://localhost:8000/docs
+- Console: <http://localhost:5173>
+- API docs (Swagger): <http://localhost:8000/docs>
 
 Run the tests: `make test` (32 tests: engine behaviour plus the HTTP/WebSocket API).
 
@@ -142,7 +146,7 @@ docs/                  ARCHITECTURE.md, DEPLOY.md, images/
 Interactive reference at `/docs`. Mutating calls accept an optional `X-API-Key` (set `TETHER_API_KEY`).
 
 | Area | Endpoints |
-|---|---|
+| --- | --- |
 | Live | `WS /ws` · `GET /api/health` `/ready` `/metrics` `/state` · `POST /api/mode` `/sim` `/autopilot` `/reset` |
 | Agents | `GET/POST /api/agents` · `GET/DELETE /api/agents/{id}` · `POST .../release` `.../isolate` · `GET /api/delegation` |
 | Alerts | `GET /api/events[/{id}]` `/alerts[/{id}]` `/alerts/{id}/report` `/timeline` `/coverage` `/siem/cef` · `GET/POST /api/approvals[/{id}]` |
@@ -159,7 +163,7 @@ Persistence is write-behind: events, alerts and audit records are queued and flu
 The engine was tuned with a research simulation (`research/`): synthetic agent traces, 160 attacks per scenario, every system thresholded at a 1% false-alarm budget.
 
 | Scenario | UEBA / ML-only | TETHER |
-|---|---|---|
+| --- | --- | --- |
 | Prompt injection, tool poisoning, token replay, sub-agent hijack | 100% | 100% |
 | Mimicry (normal statistics, hostile destination) | 1% | 92% |
 | Slow drift | 13% | 97% |
@@ -181,4 +185,4 @@ Maps to OWASP Agentic Top 10 (ASI01/02/03/06/07/10), OWASP LLM Top 10 (LLM01, LL
 
 ## License
 
-[MIT](LICENSE) © 2026 Swayam Devendra Panchal
+[MIT](LICENSE) © 2026 Aaryan Raorane
