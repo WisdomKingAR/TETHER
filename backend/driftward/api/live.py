@@ -1,6 +1,9 @@
 """Live stream, health, metrics and simulation controls."""
 from __future__ import annotations
+import asyncio as _asyncio
+import json as _json
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from fastapi.responses import StreamingResponse
 
 from .. import __version__
 from ..config import settings
@@ -73,3 +76,45 @@ async def autopilot(a: AutoIn, hub: Hub = Depends(get_hub)):
 async def reset(hub: Hub = Depends(get_hub)):
     await hub.reset()
     return Ok()
+
+
+@router.get("/stream", summary="SSE event stream — serverless-compatible fallback for /ws")
+async def sse_stream(hub: Hub = Depends(get_hub)):
+    """Server-Sent Events endpoint. Sends the same messages as /ws.
+    Used automatically by the frontend when WebSocket is unavailable (e.g. Vercel)."""
+
+    async def generator():
+        import asyncio
+        # Immediately send the hello snapshot
+        snap = hub.engine.snapshot()
+        hello = dict(
+            type="hello",
+            autopilot=hub.autopilot,
+            pending=list(hub.engine.pending.values()),
+            snapshot=snap,
+            tail=hub.history_tail[-120:],
+            runs=list(hub.runs.values())[-5:],
+        )
+        yield f"data: {_json.dumps(hello, default=str)}\n\n"
+
+        q: asyncio.Queue = asyncio.Queue(maxsize=400)
+        hub.sse_clients.add(q)
+        try:
+            while True:
+                try:
+                    msg = await asyncio.wait_for(q.get(), timeout=20)
+                    yield f"data: {_json.dumps(msg, default=str)}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"   # prevent proxy / CDN from closing idle connection
+        finally:
+            hub.sse_clients.discard(q)
+
+    return StreamingResponse(
+        generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )

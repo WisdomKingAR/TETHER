@@ -69,12 +69,50 @@ function onMessage(m) {
 }
 
 let ws, retry = 0;
+
+function connectSSE(base) {
+  const url = (base || "") + "/api/stream";
+  const es = new EventSource(url);
+  es.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+  es.onerror = () => {
+    commit({ connected: false });
+    es.close();
+    setTimeout(() => connectSSE(base), Math.min(4000, 500 * ++retry));
+  };
+}
+
 export function connect() {
   const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
-  const url = base ? base.replace(/^http/, "ws") + "/ws" : (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+  const url = base
+    ? base.replace(/^http/, "ws") + "/ws"
+    : (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+
+  let settled = false;
+
+  // Give the WebSocket 3 s to open. If it doesn't (Vercel serverless), fall back to SSE.
+  const fallbackTimer = setTimeout(() => {
+    if (!settled) {
+      settled = true;
+      try { ws.close(); } catch (_) {}
+      connectSSE(base);
+    }
+  }, 3000);
+
   ws = new WebSocket(url);
-  ws.onopen = () => { retry = 0; };
+  ws.onopen = () => {
+    settled = true;
+    clearTimeout(fallbackTimer);
+    retry = 0;
+  };
   ws.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.error(err); } };
-  ws.onclose = () => { commit({ connected: false }); setTimeout(connect, Math.min(4000, 500 * ++retry)); };
+  ws.onclose = () => {
+    clearTimeout(fallbackTimer);
+    commit({ connected: false });
+    if (settled) {
+      // Normal reconnect on Render / local dev
+      setTimeout(connect, Math.min(4000, 500 * ++retry));
+    }
+    // If not settled, fallbackTimer already fired or will fire → SSE path
+  };
 }
 export const toast = pushToast;

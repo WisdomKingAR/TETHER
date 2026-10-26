@@ -4,7 +4,11 @@ Events, alerts and audit records are queued in memory and flushed in one transac
 instead of one commit per event. The audit hash chain is computed in memory in append order, so batching never reorders it."""
 import hashlib, json, os, sqlite3, threading, time
 
-DB = os.environ.get("TETHER_DB", os.path.join(os.path.dirname(__file__), "..", "..", "data", "tether.db"))
+import tempfile as _tempfile
+DB = os.environ.get(
+    "TETHER_DB",
+    os.path.join(_tempfile.gettempdir(), "tether.db")
+)
 _lock = threading.RLock()
 _conn: sqlite3.Connection | None = None
 GENESIS = "0" * 64
@@ -24,6 +28,7 @@ def init(fresh: bool = True):
         if fresh:
             for ext in ("", "-wal", "-shm"):
                 if os.path.exists(DB + ext): os.remove(DB + ext)
+        os.makedirs(os.path.dirname(os.path.abspath(DB)), exist_ok=True)
         _conn = sqlite3.connect(DB, check_same_thread=False, isolation_level=None)
         _conn.execute("PRAGMA journal_mode=WAL"); _conn.execute("PRAGMA synchronous=OFF"); _conn.execute("PRAGMA temp_store=MEMORY")
         _conn.executescript("""

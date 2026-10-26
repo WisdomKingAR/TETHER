@@ -27,6 +27,7 @@ class Hub:
         store.init(fresh=True)
         self.engine = Engine()
         self.clients: set[WebSocket] = set()
+        self.sse_clients: set = set()   # asyncio.Queue per SSE subscriber
         self.paused = False
         self.speed = 1.0
         self.runs: dict[str, dict] = {}
@@ -60,6 +61,15 @@ class Hub:
             try: await c.send_text(data)
             except Exception: dead.append(c)  # noqa: BLE001
         for c in dead: self.clients.discard(c)
+        # SSE fan-out
+        dead_q = []
+        for q in list(self.sse_clients):
+            try:
+                q.put_nowait(msg)
+            except Exception:
+                dead_q.append(q)
+        for q in dead_q:
+            self.sse_clients.discard(q)
 
     # ------------------------------------------------------------------ ingest
     async def emit(self, ev: dict) -> dict:
