@@ -1,0 +1,80 @@
+// Tiny external store + websocket client. One immutable state object, batched per animation frame.
+import { useSyncExternalStore } from "react";
+
+let state = {
+  connected: false, agents: {}, order: [], events: [], alerts: {}, runs: {}, activeRun: null, mode: "enforce", paused: false, speed: 1,
+  counts: { events: 0, flagged: 0, sandboxed: 0, leaked: 0 }, series: {}, toasts: [], pulses: [], lastAlert: null, autopilot: false, pendingCount: 0, shock: 0, fired: null,
+};
+const subs = new Set();
+let pending = null, raf = 0;
+const emit = () => subs.forEach((f) => f());
+function flush() {
+  if (!pending) return;
+  state = { ...state, ...pending }; pending = null; raf = 0; emit();
+}
+function commit(patch) {
+  pending = { ...(pending || {}), ...patch };
+  if (!raf) { raf = 1; setTimeout(flush, 180); }   // batch websocket bursts: at most ~5 renders per second
+}
+const cur = () => ({ ...state, ...(pending || {}) });
+
+export const useStore = () => useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f); }, () => state);
+export const getState = () => cur();
+
+const pushToast = (t) => {
+  const id = Math.random().toString(36).slice(2);
+  commit({ toasts: [...cur().toasts, { id, ...t }].slice(-4) });
+  setTimeout(() => commit({ toasts: cur().toasts.filter((x) => x.id !== id) }), 6000);
+};
+
+function onMessage(m) {
+  const s = cur();
+  if (m.type === "hello") {
+    const agents = {}; m.snapshot.agents.forEach((a) => (agents[a.id] = a));
+    const series = {}; const events = (m.tail || []).slice(-80).reverse();
+    (m.tail || []).forEach((e) => { (series[e.agent] ||= []).push({ id: e.id, risk: e.agent_risk, ev: e.risk, level: e.level }); });
+    Object.keys(series).forEach((k) => (series[k] = series[k].slice(-90)));
+    const runs = {}; (m.runs || []).forEach((r) => (runs[r.id] = r));
+    commit({ connected: true, autopilot: !!m.autopilot, pendingCount: (m.pending || []).length, agents, order: m.snapshot.agents.map((a) => a.id), mode: m.snapshot.enforce ? "enforce" : "shadow", events, series, runs });
+  } else if (m.type === "event") {
+    const agents = { ...s.agents, [m.agent]: m.agent_state };
+    const series = { ...s.series }; series[m.agent] = [...(series[m.agent] || []), { id: m.id, risk: m.agent_risk, ev: m.risk, level: m.level }].slice(-90);
+    const counts = { ...s.counts, events: s.counts.events + 1, flagged: s.counts.flagged + (m.risky ? 1 : 0), sandboxed: s.counts.sandboxed + ((m.verdict.includes("ISOLATE") || m.verdict.includes("SANDBOX")) ? 1 : 0), leaked: s.counts.leaked + m.leaked };
+    const pulses = [...s.pulses, { id: m.id, agent: m.agent, risk: m.risk, bad: m.risky, t: performance.now() }].slice(-24);
+    commit({ agents, series, counts, pulses, events: [m, ...s.events].slice(0, 120), pendingCount: s.pendingCount + ((m.verdict === "CLIP_HELD" || m.verdict === "STEP_UP") ? 1 : 0), shock: m.escalated && m.level >= 3 ? s.shock + 1 : s.shock });
+  } else if (m.type === "alert") {
+    const alerts = { ...s.alerts, [m.alert.id]: m.alert };
+    commit({ alerts, lastAlert: m.alert.id });
+    if (m.new) pushToast({ kind: "alert", title: `${m.alert.id} · ${m.alert.display}`, body: m.alert.reasons[0] || "behaviour left the declared role", to: `/alerts/${m.alert.id}` });
+  } else if (m.type === "spawned") commit({ agents: { ...s.agents, [m.agent.id]: m.agent }, order: m.order });
+  else if (m.type === "removed") { const agents = { ...s.agents }; delete agents[m.id]; commit({ agents, order: m.order }); }
+  else if (m.type === "autopilot") commit({ autopilot: m.on });
+  else if (m.type === "autopilot_fired") { commit({ fired: m }); pushToast({ kind: "red", title: "Red-team autopilot", body: "Launching: " + m.title, to: "/lab" }); }
+  else if (m.type === "approval") commit({ pendingCount: Math.max(0, s.pendingCount - 1), agents: { ...s.agents, [m.agent.id]: m.agent } });
+  else if (m.type === "agent") {
+    commit({ agents: { ...s.agents, [m.agent.id]: m.agent } });
+  } else if (m.type === "mode") commit({ mode: m.enforce ? "enforce" : "shadow" });
+  else if (m.type === "sim") commit({ paused: m.paused, speed: m.speed });
+  else if (m.type === "run_start") commit({ runs: { ...s.runs, [m.run.id]: { ...m.run, steps: m.steps, results: [] } }, activeRun: m.run.id });
+  else if (m.type === "run_step") {
+    const r = s.runs[m.run_id]; if (!r) return;
+    commit({ runs: { ...s.runs, [m.run_id]: { ...r, results: [...(r.results || []), m] } } });
+  } else if (m.type === "run_end") {
+    const r = s.runs[m.run_id]; if (!r) return;
+    commit({ runs: { ...s.runs, [m.run_id]: { ...r, summary: m.summary, status: "done" } } });
+  } else if (m.type === "reset") {
+    const agents = {}; m.snapshot.agents.forEach((a) => (agents[a.id] = a));
+    commit({ agents, events: [], alerts: {}, runs: {}, series: {}, counts: { events: 0, flagged: 0, sandboxed: 0, leaked: 0 }, activeRun: null, pendingCount: 0 });
+  }
+}
+
+let ws, retry = 0;
+export function connect() {
+  const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+  const url = base ? base.replace(/^http/, "ws") + "/ws" : (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
+  ws = new WebSocket(url);
+  ws.onopen = () => { retry = 0; };
+  ws.onmessage = (e) => { try { onMessage(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+  ws.onclose = () => { commit({ connected: false }); setTimeout(connect, Math.min(4000, 500 * ++retry)); };
+}
+export const toast = pushToast;

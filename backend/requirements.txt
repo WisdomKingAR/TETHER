@@ -1,0 +1,7 @@
+fastapi>=0.110
+uvicorn[standard]>=0.29
+websockets>=12
+pyjwt>=2.8
+cryptography>=42
+numpy>=1.26
+pydantic>=2.6

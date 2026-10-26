@@ -1,0 +1,14 @@
+node_modules/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+.env
+*.db
+*.db-wal
+*.db-shm
+.DS_Store
+# local-only material
+deck/
+# NOTE: frontend/dist IS committed so Render can serve the UI without a Node build step.
