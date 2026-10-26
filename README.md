@@ -117,7 +117,7 @@ The backend also serves the built UI from `frontend/dist`:
 
 ```bash
 pip install -r backend/requirements.txt
-cd backend && uvicorn driftward.main:app --port 8000      # open http://localhost:8000
+cd backend && uvicorn tether.main:app --port 8000      # open http://localhost:8000
 ```
 
 See **[docs/DEPLOY.md](docs/DEPLOY.md)** for deploying to Render (free tier) or Render + Vercel.
@@ -126,7 +126,7 @@ See **[docs/DEPLOY.md](docs/DEPLOY.md)** for deploying to Render (free tier) or 
 
 ```
 backend/
-  driftward/
+  tether/
     main.py            app factory, lifespan, static UI hosting, CORS, request logging
     config.py          settings from environment variables
     api/               one router per domain (live, agents, alerts, contracts, attacks, security)
