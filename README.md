@@ -102,14 +102,14 @@ Scores fuse by noisy-OR (a hard-plane hit floors the risk at 85) and drive a **g
 Requires Python 3.10+ and Node 18+. No Docker and no external services.
 
 ```bash
-git clone https://github.com/shreyaaspires-cloud/SatyaSetu.git && cd SatyaSetu
+git clone https://github.com/WisdomKingAR/TETHER.git && cd TETHER
 ./start.sh          # installs dependencies, then serves
 ```
 
 - Console: <http://localhost:5173>
 - API docs (Swagger): <http://localhost:8000/docs>
 
-Run the tests: `make test` (32 tests: engine behaviour plus the HTTP/WebSocket API).
+Run the tests: `make test` or `pytest backend/tests` (32 tests: engine behaviour plus the HTTP/WebSocket/SSE API).
 
 ### One process, one port (production mode)
 
@@ -117,16 +117,16 @@ The backend also serves the built UI from `frontend/dist`:
 
 ```bash
 pip install -r backend/requirements.txt
-cd backend && uvicorn tether.main:app --port 8000      # open http://localhost:8000
+cd backend && uvicorn driftward.main:app --port 8000      # open http://localhost:8000
 ```
 
-See **[docs/DEPLOY.md](docs/DEPLOY.md)** for deploying to Render (free tier) or Render + Vercel.
+See **[docs/DEPLOY.md](docs/DEPLOY.md)** for deploying to Vercel, Render (free tier) or hybrid setups.
 
 ## Project layout
 
 ```
 backend/
-  tether/
+  driftward/
     main.py            app factory, lifespan, static UI hosting, CORS, request logging
     config.py          settings from environment variables
     api/               one router per domain (live, agents, alerts, contracts, attacks, security)

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel, Tilt, LineChart, Radial, RiskBar, LevelBadge } from "../components/ui.jsx";
-import { useStore } from "../store.js";
+import { useStore, updateStore, pollRun } from "../store.js";
 import { api, fmtBytes, verdictClass, PLANE_LABEL, PLANE_COLOR } from "../api.js";
 
 const SAMPLE = `SUPPLIER QUOTATION Q-2291 — Acme Components Pvt Ltd
@@ -71,8 +71,36 @@ export default function Lab() {
   const [text, setText] = useState(SAMPLE); const [agent, setAgent] = useState("procurement"); const [view, setView] = useState(null); const [busy, setBusy] = useState(false); const [target, setTarget] = useState("");
   useEffect(() => { api.get("/api/scenarios").then(setScen); }, []);
   const run = s.runs[view || s.activeRun];
-  const launch = async () => { setBusy(true); try { const r = await api.post("/api/attack", { scenario: sel, agent: target || undefined }); setView(r.id); } finally { setTimeout(() => setBusy(false), 800); } };
-  const play = async () => { setBusy(true); try { const r = await api.post("/api/playground", { agent, text }); setView(r.id); } finally { setTimeout(() => setBusy(false), 800); } };
+  const launch = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post("/api/attack", { scenario: sel, agent: target || undefined });
+      if (r && r.id) {
+        updateStore({ runs: { ...s.runs, [r.id]: { ...r, results: r.results || [] } }, activeRun: r.id });
+        setView(r.id);
+        if (r.status !== "done") pollRun(r.id);
+      }
+    } catch (e) {
+      console.error("Launch attack failed", e);
+    } finally {
+      setTimeout(() => setBusy(false), 800);
+    }
+  };
+  const play = async () => {
+    setBusy(true);
+    try {
+      const r = await api.post("/api/playground", { agent, text });
+      if (r && r.id) {
+        updateStore({ runs: { ...s.runs, [r.id]: { ...r, results: r.results || [] } }, activeRun: r.id });
+        setView(r.id);
+        if (r.status !== "done") pollRun(r.id);
+      }
+    } catch (e) {
+      console.error("Playground run failed", e);
+    } finally {
+      setTimeout(() => setBusy(false), 800);
+    }
+  };
   return (
     <div className="page">
       <div className="row" style={{ alignItems: "flex-end" }}>

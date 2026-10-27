@@ -139,7 +139,7 @@ class Hub:
             meta = scenarios.BY_ID[sid]
             if self.engine.agents[meta["agent"]].level >= 3:
                 continue
-            run = self.start_run(sid, None)
+            run = await self.start_run(sid, None)
             self.autopilot_log = ([dict(ts=now, scenario=sid, run=run["id"])] + self.autopilot_log)[:20]
             await self.broadcast(dict(type="autopilot_fired", scenario=sid, run=run["id"], title=run["title"]))
             await asyncio.sleep(self.autopilot_interval)
@@ -171,34 +171,39 @@ class Hub:
         self.tasks = list(self.loops.values()) + [asyncio.create_task(self.autopilot_loop()), asyncio.create_task(self.flush_loop())]
 
     # ------------------------------------------------------------------ attack runs
-    async def run_steps(self, run: dict, steps: list[dict], agent: str):
+    async def run_steps(self, run: dict, steps: list[dict], agent: str, sync: bool = False):
         run_id = run["id"]
-        await self.broadcast(dict(type="run_start", run=run, steps=[dict(i=i, label=s["label"], tool=s["tool"], attacker=s.get("attacker", True), quiet=s.get("quiet", False)) for i, s in enumerate(steps)]))
+        await self.broadcast(dict(type="run_start", run=run, steps=run.get("steps", [])))
         first_flag = None; leaked = 0.0; would_leak = 0.0; max_risk = 0.0
         for i, s in enumerate(steps):
             ev = {k: v for k, v in s.items() if k not in ("delay",)}
             ev.setdefault("agent", agent); ev["run_id"] = run_id; ev["step"] = i
-            if ev.get("tool") not in self.engine.agents[ev["agent"]].tools or True:
-                pass
             msg = await self.emit(ev)
             max_risk = max(max_risk, msg["risk"]); leaked += msg["leaked"]
             if s.get("sink") and s.get("attacker", True): would_leak += s.get("bytes", 0)
             if first_flag is None and msg["risky"] and s.get("attacker", True): first_flag = i
-            await self.broadcast(dict(type="run_step", run_id=run_id, i=i, label=s["label"], risk=msg["risk"], agent_risk=msg["agent_risk"], verdict=msg["verdict"], level=msg["level"], event_id=msg["id"], leaked=msg["leaked"], attacker=s.get("attacker", True), note=s.get("note"), iam="ALLOW", quiet=s.get("quiet", False)))
-            await asyncio.sleep(s.get("delay", 1.0) / max(self.speed, 0.1))
+            step_result = dict(type="run_step", run_id=run_id, i=i, label=s["label"], risk=msg["risk"], agent_risk=msg["agent_risk"], verdict=msg["verdict"], level=msg["level"], event_id=msg["id"], leaked=msg["leaked"], attacker=s.get("attacker", True), note=s.get("note"), iam="ALLOW", quiet=s.get("quiet", False))
+            run["results"].append(step_result)
+            await self.broadcast(step_result)
+            if not sync:
+                await asyncio.sleep(s.get("delay", 1.0) / max(self.speed, 0.1))
         a = self.engine.agents[agent]
         alert = a.incident or next((k for k, v in reversed(list(self.engine.alerts.items())) if v["agent"] == agent), None)
         summary = dict(first_flagged_step=first_flag, leaked_bytes=int(leaked), iam_only_would_leak=int(would_leak), max_risk=max_risk, final_level=a.level, final_level_name=LEVELS[a.level], alert=alert, enforce=self.engine.enforce)
         run.update(summary=summary, status="done")
         await self.broadcast(dict(type="run_end", run_id=run_id, summary=summary))
 
-    def start_run(self, scenario: str, agent: str | None, steps: list[dict] | None = None, title: str | None = None) -> dict:
+    async def start_run(self, scenario: str, agent: str | None, steps: list[dict] | None = None, title: str | None = None, sync: bool = False) -> dict:
         meta = scenarios.BY_ID.get(scenario, dict(title=title or scenario, agent=agent))
         agent = agent or meta["agent"]
         steps = steps or scenarios.build(scenario, agent, self.engine)
-        run = dict(id=uuid.uuid4().hex[:8], scenario=scenario, agent=agent, title=title or meta["title"], started=time.time(), status="running", n=len(steps))
+        run_steps_info = [dict(i=i, label=s["label"], tool=s["tool"], attacker=s.get("attacker", True), quiet=s.get("quiet", False)) for i, s in enumerate(steps)]
+        run = dict(id=uuid.uuid4().hex[:8], scenario=scenario, agent=agent, title=title or meta["title"], started=time.time(), status="running", n=len(steps), steps=run_steps_info, results=[])
         self.runs[run["id"]] = run
-        self.tasks.append(asyncio.create_task(self.run_steps(run, steps, agent)))
+        if sync:
+            await self.run_steps(run, steps, agent, sync=True)
+        else:
+            self.tasks.append(asyncio.create_task(self.run_steps(run, steps, agent)))
         return run
 
     async def spawn(self, template: str, name: str | None) -> dict:

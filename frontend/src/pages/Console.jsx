@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Constellation3D from "../components/Constellation3D.jsx";
 import { Panel, Spark, LevelBadge, RiskBar, Radial, Heat, CountUp } from "../components/ui.jsx";
-import { useStore } from "../store.js";
+import { useStore, updateStore } from "../store.js";
 import { api, LEVEL_COLORS, fmtBytes, clock, verdictClass, PLANE_LABEL, PLANE_COLOR } from "../api.js";
 
 function AgentDetail({ id }) {
@@ -120,15 +120,39 @@ function FleetHeat({ s }) {
 export default function Console() {
   const s = useStore(); const [sel, setSel] = useState("procurement"); const [insp, setInsp] = useState(null);
   const list = s.order.map((id) => s.agents[id]).filter(Boolean);
-  const setMode = (enforce) => api.post("/api/mode", { enforce });
+  const setMode = async (enforce) => {
+    updateStore({ mode: enforce ? "enforce" : "shadow" });
+    try { await api.post("/api/mode", { enforce }); } catch (e) { console.error(e); }
+  };
+  const togglePause = async () => {
+    const next = !s.paused;
+    updateStore({ paused: next });
+    try { await api.post("/api/sim", { paused: next }); } catch (e) { console.error(e); }
+  };
+  const cycleSpeed = async () => {
+    const next = s.speed >= 4 ? 1 : s.speed * 2;
+    updateStore({ speed: next });
+    try { await api.post("/api/sim", { speed: next }); } catch (e) { console.error(e); }
+  };
+  const toggleAutopilot = async () => {
+    const next = !s.autopilot;
+    updateStore({ autopilot: next });
+    try {
+      const res = await api.post("/api/autopilot", { on: next });
+      if (res && typeof res.on === "boolean") updateStore({ autopilot: res.on });
+    } catch (e) {
+      updateStore({ autopilot: !next });
+      console.error("Autopilot toggle failed", e);
+    }
+  };
   return (
     <div className="page">
       <div className="row" style={{ alignItems: "flex-end", marginBottom: 14 }}>
         <div><h1 className="h1">Live Console</h1><p className="sub" style={{ margin: 0 }}>Five autonomous agents. Every tool call passes the gateway; each pulse you see is a real event scored by five drift factors.</p></div>
         <div className="spacer" />
         <div className="seg"><button className={s.mode === "shadow" ? "on" : ""} onClick={() => setMode(false)}>Shadow</button><button className={s.mode === "enforce" ? "on" : ""} onClick={() => setMode(true)}>Enforce</button></div>
-        <div className="seg"><button onClick={() => api.post("/api/sim", { paused: !s.paused })}>{s.paused ? "▶ Resume" : "❚❚ Pause"}</button><button onClick={() => api.post("/api/sim", { speed: s.speed >= 4 ? 1 : s.speed * 2 })}>{s.speed}×</button></div>
-        <button className={`btn sm ${s.autopilot ? "primary" : "ghost"}`} onClick={() => api.post("/api/autopilot", { on: !s.autopilot })}>☠ Red-team autopilot {s.autopilot ? "ON" : "off"}</button>
+        <div className="seg"><button onClick={togglePause}>{s.paused ? "▶ Resume" : "❚❚ Pause"}</button><button onClick={cycleSpeed}>{s.speed}×</button></div>
+        <button className={`btn sm ${s.autopilot ? "primary" : "ghost"}`} onClick={toggleAutopilot}>☠ Red-team autopilot {s.autopilot ? "ON" : "off"}</button>
         <button className="btn ghost sm" onClick={() => api.post("/api/reset")}>Reset</button>
       </div>
       <Metrics />

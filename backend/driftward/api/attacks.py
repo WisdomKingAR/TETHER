@@ -17,22 +17,29 @@ def scenario_list():
 
 
 @router.post("/attack", summary="Launch an attack scenario against the live engine")
-async def attack(a: AttackIn, hub: Hub = Depends(get_hub)):
+async def attack(a: AttackIn, sync: bool = False, hub: Hub = Depends(get_hub)):
     if a.scenario not in scenarios.BY_ID: raise not_found("scenario")
     if a.agent and a.agent not in hub.engine.agents: raise not_found("agent")
-    return hub.start_run(a.scenario, a.agent)
+    return await hub.start_run(a.scenario, a.agent, sync=sync)
 
 
 @router.post("/playground", summary="Let an agent read pasted text and obey hidden instructions")
-async def playground(p: PlayIn, hub: Hub = Depends(get_hub)):
+async def playground(p: PlayIn, sync: bool = False, hub: Hub = Depends(get_hub)):
     if p.agent not in hub.engine.agents: raise not_found("agent")
     steps = scenarios.playground_steps(p.agent, p.text, hub.engine)
-    return hub.start_run("playground", p.agent, steps=steps, title="Your pasted document")
+    return await hub.start_run("playground", p.agent, steps=steps, title="Your pasted document", sync=sync)
 
 
 @router.get("/runs", summary="Recent attack runs with summaries")
 def runs(hub: Hub = Depends(get_hub)):
     return list(hub.runs.values())[-20:]
+
+
+@router.get("/runs/{run_id}", summary="Get a specific attack run with all its steps and telemetry")
+def run_detail(run_id: str, hub: Hub = Depends(get_hub)):
+    r = hub.runs.get(run_id)
+    if not r: raise not_found("run")
+    return r
 
 
 @router.get("/sandbox", summary="Decoy-sandbox sessions: what the attacker saw vs what we recorded")

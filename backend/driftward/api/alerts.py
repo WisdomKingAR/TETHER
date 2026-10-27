@@ -63,6 +63,13 @@ async def approval(eid: int, a: ApprovalIn, hub: Hub = Depends(get_hub)):
     return p
 
 
+@router.post("/approvals/seed", summary="Add sample gray-zone actions to the queue for demonstration")
+async def seed_approvals(hub: Hub = Depends(get_hub)):
+    hub.engine.seed_pending()
+    await hub.broadcast(dict(type="pending_update", count=len(hub.engine.pending)))
+    return dict(pending=list(hub.engine.pending.values()), resolved=hub.engine.resolved[:15])
+
+
 @router.get("/siem/cef", response_class=PlainTextResponse, summary="Recent events in CEF for Splunk/Elastic ingestion")
 def siem_cef(limit: int = Query(40, ge=1, le=500)):
     lines = []

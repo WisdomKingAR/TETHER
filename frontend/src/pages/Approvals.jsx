@@ -5,16 +5,51 @@ import { api, fmtBytes, clock } from "../api.js";
 
 export default function Approvals() {
   const s = useStore(); const [d, setD] = useState({ pending: [], resolved: [] });
-  const load = () => api.get("/api/approvals").then(setD);
+  const load = () => api.get("/api/approvals").then(setD).catch(() => {});
   useEffect(() => { load(); const t = setInterval(load, 1500); return () => clearInterval(t); }, []);
-  const decide = async (id, approve) => { await api.post(`/api/approvals/${id}`, { approve }); toast({ title: approve ? "Approved" : "Denied", body: `Action #${id} resolved by a human and written to the audit ledger.`, to: "/approvals" }); load(); };
+  const decide = async (id, approve) => {
+    const item = d.pending.find((x) => x.id === id);
+    if (item) {
+      const resolvedItem = { ...item, status: approve ? "approved" : "denied", resolved: Date.now() / 1000 };
+      setD((prev) => ({
+        pending: prev.pending.filter((x) => x.id !== id),
+        resolved: [resolvedItem, ...prev.resolved].slice(0, 15),
+      }));
+    }
+    try {
+      await api.post(`/api/approvals/${id}`, { approve });
+      toast({ title: approve ? "Approved" : "Denied", body: `Action #${id} resolved by a human and written to the audit ledger.`, to: "/approvals" });
+    } catch (e) {
+      console.error(e);
+    }
+    load();
+  };
+  const seedActions = async () => {
+    try {
+      const res = await api.post("/api/approvals/seed");
+      if (res && res.pending) setD(res);
+      else load();
+      toast({ title: "Queue Seeded", body: "Added sample gray-zone actions to test human approval.", to: "/approvals" });
+    } catch (e) {
+      console.error(e);
+    }
+  };
   return (
     <div className="page">
-      <h1 className="h1">Approval Queue</h1>
-      <p className="sub">The gray zone: an action is statistically odd but nothing is provably out of contract. TETHER does not guess. At Tier 1 (WATCH) it holds <i>that one action</i>, keeps the agent working, and asks a human. Every decision is appended to the tamper-evident ledger. Launch “Gray zone” in the Attack Lab to fill this queue.</p>
+      <div className="row" style={{ alignItems: "flex-end", marginBottom: 10 }}>
+        <div style={{ flex: 1 }}>
+          <h1 className="h1">Approval Queue</h1>
+          <p className="sub" style={{ margin: 0 }}>The gray zone: an action is statistically odd but nothing is provably out of contract. TETHER does not guess. At Tier 1 (WATCH) it holds <i>that one action</i>, keeps the agent working, and asks a human. Every decision is appended to the tamper-evident ledger. Launch “Gray zone” in the Attack Lab to fill this queue.</p>
+        </div>
+        <button className="btn sm primary" onClick={seedActions} style={{ whiteSpace: "nowrap" }}>⚡ Seed Test Pending Actions</button>
+      </div>
       <div className="grid" style={{ gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)" }}>
         <div className="grid" style={{ alignContent: "start" }}>
-          {d.pending.length === 0 && <Panel><div className="dim">Nothing waiting. Run the <b>Gray zone</b> scenario from the Attack Lab, or enable the Red-team autopilot on the console.</div></Panel>}
+          {d.pending.length === 0 && (
+            <Panel>
+              <div className="dim">Nothing waiting. Run the <b>Gray zone</b> scenario from the Attack Lab, or click <b>Seed Test Pending Actions</b> above.</div>
+            </Panel>
+          )}
           {d.pending.map((p) => (
             <Panel key={p.id} glow className="alert-pulse" title={`${p.display} · ${p.tool}`} tag={`#${p.id} · ${clock(p.ts)}`}>
               <div className="row" style={{ gap: 18, alignItems: "flex-start" }}>

@@ -183,7 +183,27 @@ class Engine:
             self.sign(a)
             self.issue_token(a)
         self.alerts = {}; self.eid = 0; self.aid = 0; self.pending = {}; self.resolved = []; self.canaries = {}; self.plane_counts = collections.Counter()
+        self.seed_pending()
         tokens.REVOKED.clear()
+
+    def seed_pending(self):
+        now = time.time()
+        self.pending[91] = dict(
+            id=91, ts=now - 140, agent="hr_help", display="HR Helpdesk Agent",
+            tool="email.send", target="corp-mail.local", bytes=120000, sink=True,
+            risk=58.4, reasons=["Statistical anomaly: payload 10x larger than historical baseline", "Destination inside contract, but triggered from an uncommon host"],
+            status="pending", oob=False
+        )
+        self.pending[92] = dict(
+            id=92, ts=now - 55, agent="finance_recon", display="Finance Recon Agent",
+            tool="report.write", target="s3://finance-archive/recon_2026.csv", bytes=450000, sink=True,
+            risk=62.1, reasons=["Volume exceeds normal operational threshold", "Process requested un-scoped ledger export"],
+            status="pending", oob=False
+        )
+        self.resolved = [
+            dict(id=89, ts=now - 600, agent="procurement", display="Procurement Agent", tool="price.read", target="quotes/q4.xlsx", bytes=18000, risk=42.0, reasons=["Routine query held during elevated threat level"], status="approved", resolved=now - 540),
+            dict(id=90, ts=now - 450, agent="code_review", display="Code Review Agent", tool="repo.read", target=".env.local", bytes=3200, risk=74.0, reasons=["Sensitive file read attempted outside active PR context"], status="denied", resolved=now - 390)
+        ]
 
     def sign(self, a: AgentState):
         c = a.contract; body = json.dumps({k: v for k, v in c.items() if k != "signature"}, sort_keys=True)

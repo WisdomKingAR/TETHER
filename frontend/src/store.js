@@ -20,12 +20,38 @@ const cur = () => ({ ...state, ...(pending || {}) });
 
 export const useStore = () => useSyncExternalStore((f) => { subs.add(f); return () => subs.delete(f); }, () => state);
 export const getState = () => cur();
+export const updateStore = (patch) => commit(patch);
 
 const pushToast = (t) => {
   const id = Math.random().toString(36).slice(2);
   commit({ toasts: [...cur().toasts, { id, ...t }].slice(-4) });
   setTimeout(() => commit({ toasts: cur().toasts.filter((x) => x.id !== id) }), 6000);
 };
+
+export function pollRun(runId, onDone) {
+  let attempts = 0;
+  const base = (import.meta.env.VITE_API_URL || "").replace(/\/$/, "");
+  const timer = setInterval(async () => {
+    attempts++;
+    try {
+      const res = await fetch(`${base}/api/runs/${runId}`);
+      if (res.ok) {
+        const r = await res.json();
+        const s = cur();
+        commit({ runs: { ...s.runs, [runId]: r }, activeRun: runId });
+        if (r.status === "done" || attempts > 50) {
+          clearInterval(timer);
+          if (onDone) onDone(r);
+        }
+      } else if (attempts > 50) {
+        clearInterval(timer);
+      }
+    } catch (_) {
+      if (attempts > 50) clearInterval(timer);
+    }
+  }, 900);
+  return () => clearInterval(timer);
+}
 
 function onMessage(m) {
   const s = cur();
@@ -51,14 +77,24 @@ function onMessage(m) {
   else if (m.type === "autopilot") commit({ autopilot: m.on });
   else if (m.type === "autopilot_fired") { commit({ fired: m }); pushToast({ kind: "red", title: "Red-team autopilot", body: "Launching: " + m.title, to: "/lab" }); }
   else if (m.type === "approval") commit({ pendingCount: Math.max(0, s.pendingCount - 1), agents: { ...s.agents, [m.agent.id]: m.agent } });
+  else if (m.type === "pending_update") commit({ pendingCount: m.count });
   else if (m.type === "agent") {
     commit({ agents: { ...s.agents, [m.agent.id]: m.agent } });
   } else if (m.type === "mode") commit({ mode: m.enforce ? "enforce" : "shadow" });
   else if (m.type === "sim") commit({ paused: m.paused, speed: m.speed });
-  else if (m.type === "run_start") commit({ runs: { ...s.runs, [m.run.id]: { ...m.run, steps: m.steps, results: [] } }, activeRun: m.run.id });
-  else if (m.type === "run_step") {
+  else if (m.type === "run_start") {
+    const existing = s.runs[m.run.id] || {};
+    commit({
+      runs: { ...s.runs, [m.run.id]: { ...existing, ...m.run, steps: m.steps || m.run.steps || existing.steps || [], results: existing.results || [] } },
+      activeRun: m.run.id
+    });
+  } else if (m.type === "run_step") {
     const r = s.runs[m.run_id]; if (!r) return;
-    commit({ runs: { ...s.runs, [m.run_id]: { ...r, results: [...(r.results || []), m] } } });
+    const results = [...(r.results || [])];
+    const idx = results.findIndex((x) => x.i === m.i);
+    if (idx >= 0) results[idx] = m;
+    else results.push(m);
+    commit({ runs: { ...s.runs, [m.run_id]: { ...r, results } } });
   } else if (m.type === "run_end") {
     const r = s.runs[m.run_id]; if (!r) return;
     commit({ runs: { ...s.runs, [m.run_id]: { ...r, summary: m.summary, status: "done" } } });
