@@ -118,7 +118,7 @@ class Hub:
                 return          # agent was removed
             except Exception as e:  # noqa: BLE001
                 print("benign loop error", role, e)
-            await asyncio.sleep(self.rng.uniform(0.9, 1.7) / max(self.speed, 0.1))
+            await asyncio.sleep(self.rng.uniform(2.5, 4.0) / max(self.speed, 0.1))
 
     async def autopilot_loop(self):
         """Red-team autopilot: periodically launches a random attack and releases agents once they have been caged for a while."""

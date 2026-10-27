@@ -105,7 +105,7 @@ function onMessage(m) {
     const agents = { ...s.agents, [m.agent]: m.agent_state };
     const series = { ...s.series }; series[m.agent] = [...(series[m.agent] || []), { id: m.id, risk: m.agent_risk, ev: m.risk, level: m.level }].slice(-90);
     const counts = { ...s.counts, events: s.counts.events + 1, flagged: s.counts.flagged + (m.risky ? 1 : 0), sandboxed: s.counts.sandboxed + ((m.verdict.includes("ISOLATE") || m.verdict.includes("SANDBOX")) ? 1 : 0), leaked: s.counts.leaked + m.leaked };
-    const pulses = [...s.pulses, { id: m.id, agent: m.agent, risk: m.risk, bad: m.risky, t: performance.now() }].slice(-24);
+    const pulses = [...s.pulses, { id: m.id, agent: m.agent, risk: m.risk, bad: m.risky, t: performance.now() }].slice(-12);
     commit({ agents, series, counts, pulses, events: [m, ...s.events].slice(0, 120), pendingCount: s.pendingCount + ((m.verdict === "CLIP_HELD" || m.verdict === "STEP_UP") ? 1 : 0), shock: m.escalated && m.level >= 3 ? s.shock + 1 : s.shock });
   } else if (m.type === "alert") {
     const alerts = { ...s.alerts, [m.alert.id]: m.alert };

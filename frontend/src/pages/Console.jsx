@@ -127,14 +127,14 @@ export default function Console() {
       try {
         const st = await api.get("/api/state");
         if (st) syncState(st);
-        if (!s.connected || (s.speed > 0 && !s.paused)) {
+        if (!s.connected && !s.paused) {
           const tickRes = await api.post("/api/tick");
           if (tickRes && tickRes.event) recordEvent(tickRes.event);
         }
       } catch (_) {}
-    }, 2200);
+    }, 4500);
     return () => clearInterval(timer);
-  }, [s.connected, s.speed, s.paused]);
+  }, [s.connected, s.paused]);
 
   const setMode = async (enforce) => {
     updateStore({ mode: enforce ? "enforce" : "shadow" });

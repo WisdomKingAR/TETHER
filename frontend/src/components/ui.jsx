@@ -29,14 +29,29 @@ export function RiskBar({ value, color }) {
   return <div className="riskbar"><i style={{ width: Math.min(100, value) + "%", background: c, boxShadow: `0 0 10px ${c}` }} /></div>;
 }
 
-export function CountUp({ to, dur = 1400, suffix = "", decimals = 0 }) {
-  const [v, setV] = useState(0);
+export function CountUp({ to, dur = 500, suffix = "", decimals = 0 }) {
+  const prevRef = useRef(to);
+  const [v, setV] = useState(to);
+
   useEffect(() => {
+    const from = prevRef.current;
+    prevRef.current = to;
+    if (from === to) return;
+    if (Math.abs(to - from) <= 2) {
+      setV(to);
+      return;
+    }
     const t0 = performance.now();
-    const id = setInterval(() => { const p = Math.min(1, (performance.now() - t0) / dur); setV(to * (1 - Math.pow(1 - p, 3))); if (p >= 1) clearInterval(id); }, 30);
+    const id = setInterval(() => {
+      const p = Math.min(1, (performance.now() - t0) / dur);
+      const ease = 1 - Math.pow(1 - p, 3);
+      setV(from + (to - from) * ease);
+      if (p >= 1) clearInterval(id);
+    }, 25);
     return () => clearInterval(id);
-  }, [to]);
-  return <>{v.toFixed(decimals)}{suffix}</>;
+  }, [to, dur]);
+
+  return <>{decimals > 0 ? v.toFixed(decimals) : Math.round(v).toLocaleString()}{suffix}</>;
 }
 
 /* ------------------------------------------------------------------ SVG charts */
