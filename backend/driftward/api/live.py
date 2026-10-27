@@ -72,6 +72,19 @@ async def autopilot(a: AutoIn, hub: Hub = Depends(get_hub)):
     return dict(on=hub.autopilot, interval=hub.autopilot_interval, log=hub.autopilot_log)
 
 
+@router.post("/tick", summary="Simulate one benign traffic tick across agents")
+async def sim_tick(hub: Hub = Depends(get_hub)):
+    """Triggers one benign event cycle. Useful for driving live telemetry on serverless deployments."""
+    if not hub.paused:
+        active = [r for r, a in hub.engine.agents.items() if a.level < 4]
+        if active:
+            role = hub.rng.choice(active)
+            ev = hub.benign_event(role)
+            msg = await hub.emit(ev)
+            return dict(ok=True, event=msg, counts=hub.engine.snapshot()["counts"])
+    return dict(ok=True, counts=hub.engine.snapshot()["counts"])
+
+
 @router.post("/reset", response_model=Ok, summary="Reset all demo state (agents, alerts, ledger)")
 async def reset(hub: Hub = Depends(get_hub)):
     await hub.reset()

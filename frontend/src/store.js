@@ -53,6 +53,35 @@ export function pollRun(runId, onDone) {
   return () => clearInterval(timer);
 }
 
+export function syncState(data) {
+  if (!data) return;
+  const s = cur();
+  const agents = { ...s.agents };
+  if (data.agents) {
+    data.agents.forEach((a) => (agents[a.id] = a));
+  }
+  let counts = s.counts;
+  if (data.counts) {
+    counts = {
+      events: Math.max(s.counts.events, data.counts.events || 0),
+      flagged: Math.max(s.counts.flagged, data.counts.flagged || 0),
+      sandboxed: Math.max(s.counts.sandboxed, data.counts.sandboxed || 0),
+      leaked: Math.max(s.counts.leaked, data.counts.leaked || 0),
+    };
+  }
+  commit({
+    agents,
+    counts,
+    order: data.agents ? data.agents.map((a) => a.id) : s.order,
+    mode: typeof data.enforce === "boolean" ? (data.enforce ? "enforce" : "shadow") : s.mode,
+    pendingCount: typeof data.pending === "number" ? data.pending : s.pendingCount,
+  });
+}
+
+export function recordEvent(m) {
+  if (m) onMessage(m);
+}
+
 function onMessage(m) {
   const s = cur();
   if (m.type === "hello") {
@@ -61,7 +90,17 @@ function onMessage(m) {
     (m.tail || []).forEach((e) => { (series[e.agent] ||= []).push({ id: e.id, risk: e.agent_risk, ev: e.risk, level: e.level }); });
     Object.keys(series).forEach((k) => (series[k] = series[k].slice(-90)));
     const runs = {}; (m.runs || []).forEach((r) => (runs[r.id] = r));
-    commit({ connected: true, autopilot: !!m.autopilot, pendingCount: (m.pending || []).length, agents, order: m.snapshot.agents.map((a) => a.id), mode: m.snapshot.enforce ? "enforce" : "shadow", events, series, runs });
+    let evCount = m.snapshot.events || 0;
+    let flCount = 0, sbCount = 0, lkCount = 0;
+    m.snapshot.agents.forEach((a) => {
+      if (a.stats) {
+        flCount += a.stats.flagged || 0;
+        sbCount += a.stats.sandboxed || 0;
+        lkCount += a.stats.leaked || 0;
+      }
+    });
+    const counts = m.snapshot.counts || { events: evCount, flagged: flCount, sandboxed: sbCount, leaked: lkCount };
+    commit({ connected: true, autopilot: !!m.autopilot, pendingCount: (m.pending || []).length, agents, order: m.snapshot.agents.map((a) => a.id), mode: m.snapshot.enforce ? "enforce" : "shadow", events, series, runs, counts });
   } else if (m.type === "event") {
     const agents = { ...s.agents, [m.agent]: m.agent_state };
     const series = { ...s.series }; series[m.agent] = [...(series[m.agent] || []), { id: m.id, risk: m.agent_risk, ev: m.risk, level: m.level }].slice(-90);

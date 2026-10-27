@@ -535,7 +535,12 @@ class Engine:
         return "\n".join(lines)
 
     def snapshot(self) -> dict:
-        return dict(agents=[a.public() for a in self.agents.values()], enforce=self.enforce, alerts=len(self.alerts), events=self.eid)
+        total_ev = max(self.eid, sum(a.stats["events"] for a in self.agents.values()))
+        total_fl = sum(a.stats["flagged"] for a in self.agents.values())
+        total_sb = sum(a.stats["sandboxed"] for a in self.agents.values())
+        total_lk = sum(a.stats["leaked"] for a in self.agents.values())
+        counts = dict(events=total_ev, flagged=total_fl, sandboxed=total_sb, leaked=int(total_lk))
+        return dict(agents=[a.public() for a in self.agents.values()], enforce=self.enforce, alerts=len(self.alerts), events=total_ev, counts=counts)
 
 
 def claims_short(tok: str) -> dict:

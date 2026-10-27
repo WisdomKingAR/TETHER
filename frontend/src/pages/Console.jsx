@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Constellation3D from "../components/Constellation3D.jsx";
 import { Panel, Spark, LevelBadge, RiskBar, Radial, Heat, CountUp } from "../components/ui.jsx";
-import { useStore, updateStore } from "../store.js";
+import { useStore, updateStore, syncState, recordEvent } from "../store.js";
 import { api, LEVEL_COLORS, fmtBytes, clock, verdictClass, PLANE_LABEL, PLANE_COLOR } from "../api.js";
 
 function AgentDetail({ id }) {
@@ -120,6 +120,22 @@ function FleetHeat({ s }) {
 export default function Console() {
   const s = useStore(); const [sel, setSel] = useState("procurement"); const [insp, setInsp] = useState(null);
   const list = s.order.map((id) => s.agents[id]).filter(Boolean);
+
+  useEffect(() => {
+    api.get("/api/state").then(syncState).catch(() => {});
+    const timer = setInterval(async () => {
+      try {
+        const st = await api.get("/api/state");
+        if (st) syncState(st);
+        if (!s.connected || (s.speed > 0 && !s.paused)) {
+          const tickRes = await api.post("/api/tick");
+          if (tickRes && tickRes.event) recordEvent(tickRes.event);
+        }
+      } catch (_) {}
+    }, 2200);
+    return () => clearInterval(timer);
+  }, [s.connected, s.speed, s.paused]);
+
   const setMode = async (enforce) => {
     updateStore({ mode: enforce ? "enforce" : "shadow" });
     try { await api.post("/api/mode", { enforce }); } catch (e) { console.error(e); }
